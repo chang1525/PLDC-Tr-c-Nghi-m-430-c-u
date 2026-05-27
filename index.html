@@ -745,7 +745,9 @@ let state = {
   examTime: 0,
   examDuration: 0,
   examTimer: null,
-  isShuffled: false
+  isShuffled: false,
+  singleQuestionMode: false,
+  returnView: null
 };
 
 // ============================================================
@@ -1051,6 +1053,8 @@ function renderHome() {
 // STUDY VIEW
 // ============================================================
 function startStudy(chapterId, filter='all') {
+  state.singleQuestionMode = false;
+  state.returnView = null;
   state.chapterId = chapterId;
   state.filter = filter;
   const key = `${chapterId}_${filter}`;
@@ -1127,19 +1131,21 @@ function renderStudy() {
       <div style="font-size:13px;color:var(--accent);font-weight:700;margin-bottom:2px">${chName}${filterLabel}</div>
       <div class="quiz-info">Câu <b>${state.qIdx+1}</b>/${state.queue.length} &nbsp;·&nbsp; Tổng đúng: <b>${countCorrect}</b> &nbsp;·&nbsp; Đang sai: <b style="color:var(--red)">${countWrong}</b></div>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="renderHome()">← Về trang chủ</button>
+    ${state.singleQuestionMode
+      ? `<button class="btn btn-secondary btn-sm" onclick="${state.returnView === 'wrongList' ? 'renderWrongList()' : 'renderMarkedList()'}">← Quay lại danh sách</button>`
+      : `<button class="btn btn-secondary btn-sm" onclick="renderHome()">← Về trang chủ</button>`}
   </div>
   <div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
 
   <div class="flag-row">
     <button id="btn-flag-marked" class="flag-btn ${markedActive}" onclick="toggleFlag('marked',${qId})">🔖 Đánh dấu</button>
-    
+    ${state.singleQuestionMode ? '' : `
     <button class="flag-btn" onclick="toggleShuffle()" style="margin-left:auto; border-color:var(--accent); color:var(--accent)">
       🔀 Đảo câu: ${state.isShuffled ? 'BẬT' : 'TẮT'}
     </button>
     <button class="flag-btn" onclick="resetCurrentChapter()" style="border-color:var(--red); color:var(--red)">
       🔄 Reset phần này
-    </button>
+    </button>`}
   </div>
 
   <div class="question-card">
@@ -1160,7 +1166,7 @@ function renderStudy() {
   </div>
 
   <div class="quiz-actions" id="quizActions">
-    <button class="btn btn-secondary" onclick="skipQ()">⏭ Bỏ qua</button>
+    ${state.singleQuestionMode ? '' : `<button class="btn btn-secondary" onclick="skipQ()">⏭ Bỏ qua</button>`}
   </div>`;
 
   app.innerHTML = html;
@@ -1236,21 +1242,23 @@ function removeFromMarked(qId) {
 }
 
 function jumpToQuestionInFilter(qId, chapterId, filter) {
+  state.singleQuestionMode = true;
+  state.returnView = filter === 'wrong' ? 'wrongList' : 'markedList';
   state.chapterId = chapterId;
   state.filter = filter;
   const key = `${chapterId}_${filter}`;
-  
+
   state.queue = buildQueue(chapterId, filter);
-  
+
   const idx = state.queue.indexOf(qId);
   if (idx !== -1) {
     state.qIdx = idx;
     state.sessions[key] = { queue: state.queue, qIdx: state.qIdx };
     saveState();
-    
+
     state.answered = false;
     state.mode = 'study';
-    
+
     const q = getQ(qId);
     state.shuffledOpts = getShuffledOpts(q);
     renderStudy();
@@ -1458,10 +1466,17 @@ function selectAnswer(shuffledIdx, origIdx, qId) {
   fb.style.display = 'block';
 
   // Cập nhật nút chuyển câu
-  document.getElementById('quizActions').innerHTML = `
-    <button class="btn btn-primary" onclick="nextQ()">Câu tiếp theo →</button>
-    <button class="btn btn-secondary" onclick="skipQ()">⏭ Bỏ qua</button>
-  `;
+  if (state.singleQuestionMode) {
+    const returnFn = state.returnView === 'wrongList' ? 'renderWrongList()' : 'renderMarkedList()';
+    document.getElementById('quizActions').innerHTML = `
+      <button class="btn btn-secondary" onclick="${returnFn}">← Quay lại danh sách</button>
+    `;
+  } else {
+    document.getElementById('quizActions').innerHTML = `
+      <button class="btn btn-primary" onclick="nextQ()">Câu tiếp theo →</button>
+      <button class="btn btn-secondary" onclick="skipQ()">⏭ Bỏ qua</button>
+    `;
+  }
 }
 
 function nextQ() {
