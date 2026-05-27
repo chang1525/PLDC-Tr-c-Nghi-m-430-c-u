@@ -3,16 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
 <title>PLDC Quiz — Pháp Luật Đại Cương</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
-  
   :root {
-    --bg:  #0f1117;
+    --bg: #0f1117;
     --surface: #1a1d27;
-    --surface2:  #22263a;
+    --surface2: #22263a;
     --border: #2e3350;
     --accent: #6c63ff;
     --accent2: #ff6b9d;
@@ -869,13 +867,19 @@ function exportStateAsURL() {
 
 loadState();
 
+// Migrate: câu nào còn wrong>0 thì set everWrong để tương thích với version mới
+Object.keys(state.progress).forEach(id => {
+  const p = state.progress[id];
+  if (p && p.wrong > 0 && !p.everWrong) p.everWrong = true;
+});
+
 function getQ(id) { return QUESTIONS.find(q => q.id === id); }
 
 function chapterQuestions(chapterId, filter) {
   const ch = CHAPTERS.find(c => c.id === chapterId);
   let ids = ch ? ch.ids : QUESTIONS.map(q=>q.id);
   ids = ids.filter(id => QUESTIONS.find(q=>q.id===id));
-  if (filter === 'wrong') ids = ids.filter(id => (state.progress[id]||{}).wrong > 0);
+  if (filter === 'wrong') ids = ids.filter(id => (state.progress[id]||{}).everWrong === true);
   if (filter === 'unsure') ids = ids.filter(id => (state.progress[id]||{}).unsure);
   if (filter === 'marked') ids = ids.filter(id => (state.progress[id]||{}).marked);
   return ids;
@@ -1019,7 +1023,7 @@ function renderHome() {
 
   html += `<div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap">`;
   if (wrongIds > 0) {
-    html += `<button class="btn btn-danger" onclick="startStudy(0,'wrong')">⚡ Ôn ${wrongIds} câu sai</button>`;
+    html += `<button class="btn btn-danger" onclick="renderWrongList()">⚡ ${wrongIds} câu sai</button>`;
   }
   if (markedIds > 0) {
     html += `<button class="btn btn-secondary" onclick="renderMarkedList()">🔖 Danh sách ${markedIds} câu đánh dấu</button>`;
@@ -1078,6 +1082,8 @@ function startStudy(chapterId, filter='all') {
 function loadQuestion() {
   if (state.qIdx >= state.queue.length) {
     const key = `${state.chapterId}_${state.filter}`;
+    state.queue = [];
+    state.qIdx = 0;
     state.sessions[key] = { queue: [], qIdx: 0 };
     saveState();
     showToast('🎉 Đã hoàn thành danh sách câu hỏi!');
@@ -1234,6 +1240,77 @@ function jumpToQuestionInFilter(qId, chapterId, filter) {
 }
 
 // ============================================================
+// VIEW: DANH SÁCH CÂU SAI
+// ============================================================
+function renderWrongList() {
+  state.mode = 'wrongList';
+  updateHeader();
+
+  const wrongIds = QUESTIONS.filter(q => {
+    const p = state.progress[q.id];
+    return p && p.everWrong === true;
+  }).map(q => q.id).sort((a, b) => a - b);
+
+  let html = `
+  <div class="nav-tabs">
+    <button class="nav-tab" onclick="renderHome()">📚 Ôn tập</button>
+    <button class="nav-tab" onclick="renderExamSetup()">🎯 Thi thử</button>
+    <button class="nav-tab" onclick="renderNotesView()">📝 Ghi chú</button>
+  </div>
+  <div class="home-title" style="margin-bottom: 24px;">🔴 Danh sách câu đã từng sai</div>
+  `;
+
+  if (wrongIds.length === 0) {
+    html += `
+    <div class="empty">
+      <div class="icon">✅</div>
+      <p style="font-weight:600; color:var(--text)">Chưa có câu nào bị sai.</p>
+    </div>`;
+  } else {
+    html += `
+    <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+      <button class="btn btn-primary" onclick="startStudy(0,'wrong')">▶️ Ôn tất cả câu sai (${wrongIds.length})</button>
+      <button class="btn btn-secondary" onclick="renderHome()">← Quay lại</button>
+    </div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">Bấm <b style="color:var(--red)">✕</b> để xóa câu ra khỏi danh sách sai.</div>
+    <div class="chapter-grid" style="grid-template-columns: 1fr;">`;
+
+    wrongIds.forEach(id => {
+      const q = getQ(id);
+      const p = state.progress[id] || {};
+      const stillWrong = p.wrong > 0;
+      const statusColor = stillWrong ? 'var(--red)' : 'var(--green)';
+      const statusLabel = stillWrong ? '🔴 Còn sai' : '✅ Đã đúng';
+
+      html += `
+      <div class="chapter-card" style="text-align:left; display:flex; justify-content:space-between; align-items:center; cursor:default;">
+        <div style="padding-right:12px; flex:1; cursor:pointer;" onclick="jumpToQuestionInFilter(${id}, 0, 'wrong')">
+          <div style="font-size:12px; font-weight:700; margin-bottom:4px; display:flex; gap:10px; align-items:center;">
+            <span style="color:var(--accent)">CÂU ${q.id}</span>
+            <span style="color:${statusColor}; font-size:11px;">${statusLabel}</span>
+          </div>
+          <div style="font-size:14px; font-weight:600; line-height:1.4; color:var(--text)">${q.q.substring(0, 100)}${q.q.length > 100 ? '...' : ''}</div>
+        </div>
+        <button onclick="removeFromWrong(${id})" style="min-width:32px; height:32px; border-radius:8px; border:1px solid rgba(255,92,106,.3); background:rgba(255,92,106,.1); color:var(--red); font-size:16px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">✕</button>
+      </div>`;
+    });
+
+    html += `</div>`;
+  }
+
+  app.innerHTML = html;
+}
+
+function removeFromWrong(qId) {
+  if (!state.progress[qId]) return;
+  state.progress[qId].everWrong = false;
+  state.progress[qId].wrong = 0;
+  saveState();
+  showToast('Đã xóa câu khỏi danh sách sai.');
+  renderWrongList();
+}
+
+// ============================================================
 // VIEW: SỔ TAY GHI CHÚ
 // ============================================================
 function renderNotesView() {
@@ -1310,11 +1387,13 @@ function selectAnswer(shuffledIdx, origIdx, qId) {
 
   // LOGIC CẬP NHẬT ĐÚNG/SAI CHUẨN XÁC
   if (correct) {
-    state.progress[qId].correct = 1; // Làm đúng thì đánh dấu là đúng
-    state.progress[qId].wrong = 0;   // Xóa án sai (nếu trước đó đã làm sai)
+    state.progress[qId].correct = 1;
+    state.progress[qId].wrong = 0;
+    // everWrong KHÔNG bị xóa — câu đã từng sai sẽ lưu mãi trong danh sách câu sai
   } else {
     state.progress[qId].correct = 0;
-    state.progress[qId].wrong = 1;   // Nếu sai thì ghim lại là 1 (không cộng dồn lên 2, 3...)
+    state.progress[qId].wrong = 1;
+    state.progress[qId].everWrong = true; // Lưu vĩnh viễn, chỉ xóa khi user tự xóa
   }
   saveState();
 
