@@ -1018,7 +1018,7 @@ function renderHome() {
   html += `</div>`;
 
   // Danger zone & Filters
-  const wrongIds = QUESTIONS.filter(q=>{const p=state.progress[q.id];return p&&p.wrong>0;}).length;
+  const wrongIds = QUESTIONS.filter(q=>{const p=state.progress[q.id];return p&&p.everWrong===true;}).length;
   const markedIds = QUESTIONS.filter(q=>{const p=state.progress[q.id];return p&&p.marked;}).length;
 
   html += `<div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap">`;
@@ -1173,9 +1173,9 @@ function renderStudy() {
 function renderMarkedList() {
   state.mode = 'markedList';
   updateHeader();
-  
-  const markedIds = QUESTIONS.filter(q => { const p = state.progress[q.id]; return p && p.marked; }).map(q => q.id);
-  
+
+  const markedIds = QUESTIONS.filter(q => { const p = state.progress[q.id]; return p && p.marked; }).map(q => q.id).sort((a, b) => a - b);
+
   let html = `
   <div class="nav-tabs">
     <button class="nav-tab" onclick="renderHome()">📚 Ôn tập</button>
@@ -1193,28 +1193,46 @@ function renderMarkedList() {
     </div>`;
   } else {
     html += `
-    <div style="margin-bottom: 20px; display: flex; gap: 10px;">
-      <button class="btn btn-primary" onclick="startStudy(0,'marked')">▶️ Học tất cả câu đánh dấu</button>
+    <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+      <button class="btn btn-primary" onclick="startStudy(0,'marked')">▶️ Học tất cả câu đánh dấu (${markedIds.length})</button>
       <button class="btn btn-secondary" onclick="renderHome()">← Quay lại</button>
     </div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">Bấm <b style="color:var(--accent2)">✕</b> để bỏ đánh dấu câu.</div>
     <div class="chapter-grid" style="grid-template-columns: 1fr;">`;
-    
+
     markedIds.forEach((id) => {
       const q = getQ(id);
+      const p = state.progress[id] || {};
+      const isCorrect = p.correct > 0 && p.wrong === 0;
+      const isWrong = p.wrong > 0;
+      const statusColor = isCorrect ? 'var(--green)' : isWrong ? 'var(--red)' : 'var(--muted)';
+      const statusLabel = isCorrect ? '✅ Đã đúng' : isWrong ? '🔴 Đang sai' : '📚 Chưa làm';
+
       html += `
-      <div class="chapter-card" style="text-align:left; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="jumpToQuestionInFilter(${id}, 0, 'marked')">
-        <div style="padding-right: 15px;">
-          <div style="font-size:12px; color:var(--accent); font-weight:700; margin-bottom:4px;">CÂU ${q.id}</div>
-          <div style="font-size:14px; font-weight:600; line-height:1.4;">${q.q.substring(0, 100)}${q.q.length > 100 ? '...' : ''}</div>
+      <div class="chapter-card" style="text-align:left; display:flex; justify-content:space-between; align-items:center; cursor:default;">
+        <div style="padding-right:12px; flex:1; cursor:pointer;" onclick="jumpToQuestionInFilter(${id}, 0, 'marked')">
+          <div style="font-size:12px; font-weight:700; margin-bottom:4px; display:flex; gap:10px; align-items:center;">
+            <span style="color:var(--accent)">CÂU ${q.id}</span>
+            <span style="color:${statusColor}; font-size:11px;">${statusLabel}</span>
+          </div>
+          <div style="font-size:14px; font-weight:600; line-height:1.4; color:var(--text)">${q.q.substring(0, 100)}${q.q.length > 100 ? '...' : ''}</div>
         </div>
-        <div style="font-size:20px; color:var(--muted); min-width: 24px; text-align: right;">➔</div>
+        <button onclick="removeFromMarked(${id})" style="min-width:32px; height:32px; border-radius:8px; border:1px solid rgba(255,107,157,.3); background:rgba(255,107,157,.1); color:var(--accent2); font-size:16px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">✕</button>
       </div>`;
     });
-    
+
     html += `</div>`;
   }
-  
+
   app.innerHTML = html;
+}
+
+function removeFromMarked(qId) {
+  if (!state.progress[qId]) return;
+  state.progress[qId].marked = false;
+  saveState();
+  showToast('Đã bỏ đánh dấu câu hỏi.');
+  renderMarkedList();
 }
 
 function jumpToQuestionInFilter(qId, chapterId, filter) {
